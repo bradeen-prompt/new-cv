@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Play, Check, X, MonitorPlay, Mic, Video } from 'lucide-react';
+import { Play, Check, X, MonitorPlay, Mic, Video, Loader2 } from 'lucide-react';
 import './LandingPage.css';
 import BuyCreditsModal from './BuyCreditsModal';
+import { supabase } from '../lib/supabase';
 
 interface LandingPageProps {
   onConnect: () => void;
@@ -11,6 +12,34 @@ interface LandingPageProps {
 const LandingPage: React.FC<LandingPageProps> = ({ onConnect }) => {
   const [showLogin, setShowLogin] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setAuthError('');
+    
+    try {
+      if (isSignUp) {
+        const { error } = await supabase.auth.signUp({ email, password });
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+      }
+      setShowLogin(false);
+      onConnect();
+    } catch (err: any) {
+      setAuthError(err.message || 'Une erreur est survenue');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="landing-wrapper">
       {/* ================== NAVIGATION ================== */}
@@ -248,7 +277,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onConnect }) => {
                 <li style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', marginBottom: '1rem', color: '#475569' }}><Check size={18} color="#167DFF" /> Crédits valables à vie</li>
               </ul>
               <div className="pricing-btn-container">
-                <button className="btn-liquid-glass w-full" style={{ background: 'rgba(255,255,255,0.8)', color: '#0F172A' }} onClick={() => setShowPayment(true)}>Acheter</button>
+                <button className="btn-liquid-glass w-full" style={{ background: 'rgba(255,255,255,0.8)', color: '#0F172A' }} onClick={() => { setIsSignUp(true); setShowLogin(true); }}>Créer un compte</button>
               </div>
             </div>
           </div>
@@ -274,7 +303,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onConnect }) => {
                 <li style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', marginBottom: '1rem', color: '#475569' }}><Check size={18} color="#167DFF" /> -40% d'économie au crédit</li>
               </ul>
               <div className="pricing-btn-container">
-                <button className="btn-liquid-glass w-full" onClick={() => setShowPayment(true)}>Acheter le Pack Pro</button>
+                <button className="btn-liquid-glass w-full" onClick={() => { setIsSignUp(true); setShowLogin(true); }}>Créer un compte</button>
               </div>
             </div>
           </div>
@@ -296,7 +325,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onConnect }) => {
                 <li style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', marginBottom: '1rem', color: '#475569' }}><Check size={18} color="#167DFF" /> Accès aux futures betas IA</li>
               </ul>
               <div className="pricing-btn-container">
-                <button className="btn-liquid-glass w-full" style={{ background: 'rgba(255,255,255,0.8)', color: '#0F172A' }} onClick={() => setShowPayment(true)}>Acheter</button>
+                <button className="btn-liquid-glass w-full" style={{ background: 'rgba(255,255,255,0.8)', color: '#0F172A' }} onClick={() => { setIsSignUp(true); setShowLogin(true); }}>Créer un compte</button>
               </div>
             </div>
           </div>
@@ -308,13 +337,45 @@ const LandingPage: React.FC<LandingPageProps> = ({ onConnect }) => {
         <div className="login-modal-overlay">
           <div className="pricing-glass-card login-modal">
             <button className="close-modal-btn" onClick={() => setShowLogin(false)}><X size={24} /></button>
-            <h3 className="pro-title" style={{marginTop: 0}}>Connexion</h3>
-            <p style={{marginBottom: '1.5rem', color: '#334155', fontWeight: 500}}>Accédez à votre espace ThumbAI Pro.</p>
-            <form className="login-form" onSubmit={(e) => { e.preventDefault(); setShowLogin(false); onConnect(); }}>
-              <input type="email" placeholder="Adresse e-mail" required />
-              <input type="password" placeholder="Mot de passe" required />
-              <button type="submit" className="pro-btn-primary" style={{width: '100%', marginTop: '1rem', padding: '0.8rem 1.5rem'}}>Se connecter</button>
+            <h3 className="pro-title" style={{marginTop: 0}}>
+              {isSignUp ? 'Créer un compte' : 'Connexion'}
+            </h3>
+            <p style={{marginBottom: '1.5rem', color: '#334155', fontWeight: 500}}>
+              {isSignUp ? 'Rejoignez-nous et recevez 3 crédits gratuits.' : 'Accédez à votre espace ThumbAI Pro.'}
+            </p>
+            
+            {authError && <div style={{ color: '#ef4444', marginBottom: '1rem', fontSize: '0.9rem' }}>{authError}</div>}
+            
+            <form className="login-form" onSubmit={handleAuth}>
+              <input 
+                type="email" 
+                placeholder="Adresse e-mail" 
+                required 
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+              />
+              <input 
+                type="password" 
+                placeholder="Mot de passe" 
+                required 
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+              />
+              <button type="submit" className="pro-btn-primary" style={{width: '100%', marginTop: '1rem', padding: '0.8rem 1.5rem', display: 'flex', justifyContent: 'center', alignItems: 'center'}} disabled={isLoading}>
+                {isLoading ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> : (isSignUp ? 'S\'inscrire' : 'Se connecter')}
+              </button>
             </form>
+            
+            <p style={{ marginTop: '1rem', fontSize: '0.9rem', color: '#64748b', textAlign: 'center' }}>
+              {isSignUp ? 'Déjà un compte ?' : 'Pas encore de compte ?'}
+              <button 
+                type="button" 
+                onClick={() => { setIsSignUp(!isSignUp); setAuthError(''); }}
+                style={{ background: 'none', border: 'none', color: '#167DFF', fontWeight: 600, cursor: 'pointer', paddingLeft: '0.5rem' }}
+              >
+                {isSignUp ? 'Se connecter' : 'S\'inscrire'}
+              </button>
+            </p>
           </div>
         </div>
       )}

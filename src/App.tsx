@@ -18,19 +18,24 @@ function App() {
     }
   }, []);
 
-  // Initialize Supabase Anonymous Auth
+  // Check session on load to restore page
   useEffect(() => {
-    const initAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        const { error } = await supabase.auth.signInAnonymously();
-        if (error) {
-          console.error('Erreur lors de la connexion anonyme :', error);
-        }
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      // If we are on landing and user is logged in, redirect to dashboard
+      // Note: we don't redirect if they are on checkout-return
+      if (session && currentPage === 'landing') {
+        setCurrentPage('dashboard');
       }
-    };
-    initAuth();
-  }, []);
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) {
+        setCurrentPage('landing');
+      }
+    });
+
+    return () => authListener.subscription.unsubscribe();
+  }, [currentPage]);
 
   return (
     <CreditsProvider>
