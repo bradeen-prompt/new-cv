@@ -1,50 +1,126 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { supabase } from '../lib/supabase';
 
 interface CreditsContextType {
   credits: number;
-  useCredit: () => boolean;
-  addCredits: (amount: number) => void;
+  useCredit: () => Promise<boolean>;
+  addCredits: (amount: number, packId?: string, price?: number, currency?: string) => Promise<void>;
   isLoaded: boolean;
 }
 
 const CreditsContext = createContext<CreditsContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'thumbai_credits';
 const INITIAL_CREDITS = 3;
 
 export const CreditsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [credits, setCredits] = useState<number>(INITIAL_CREDITS);
+  const [credits, setCredits] = useState<number>(0);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
 
-  // Load credits from localStorage on mount
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored !== null) {
-      const parsed = parseInt(stored, 10);
-      if (!isNaN(parsed) && parsed >= 0) {
-        setCredits(parsed);
+    // Get the current session user
+    const fetchUserAndCredits = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        setUserId(session.user.id);
+        await loadCredits(session.user.id);
+      } else {
+        // Fallback for visual rendering if no user yet (will be 0 until logged in)
+        setIsLoaded(true);
       }
-    }
-    // If no stored value, it's a new user → keep INITIAL_CREDITS (3)
-    setIsLoaded(true);
+    };
+    fetchUserAndCredits();
+
+    // Listen for auth changes
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (session?.user) {
+        setUserId(session.user.id);
+        await loadCredits(session.user.id);
+      }
+    });
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
   }, []);
 
-  // Persist credits to localStorage whenever they change
-  useEffect(() => {
-    if (isLoaded) {
-      localStorage.setItem(STORAGE_KEY, String(credits));
-    }
-  }, [credits, isLoaded]);
+  const loadCredits = async (uid: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('user_credits')
+        .select('credits')
+        .eq('user_id', uid)
+        .single();
 
-  const useCredit = useCallback((): boolean => {
+      if (error && error.code === 'PGRST116') {
+        // No row found, let's create one with initial credits
+        const { error: insertError } = await supabase
+          .from('user_credits')
+          .insert({ user_id: uid, credits: INITIAL_CREDITS });
+        
+        if (!insertError) {
+          setCredits(INITIAL_CREDITS);
+        }
+      } else if (data) {
+        setCredits(data.credits);
+      }
+    } catch (err) {
+      console.error("Error loading credits:", err);
+    } finally {
+      setIsLoaded(true);
+    }
+  };
+
+  const useCredit = useCallback(async (): Promise<boolean> => {
     if (credits <= 0) return false;
+    
+    // Optimistic UI update
     setCredits(prev => prev - 1);
-    return true;
-  }, [credits]);
+    
+    if (userId) {
+      const { data, error } = await supabase.rpc('consume_credit');
+      if (error || !data) {
+        // Revert optimistic update
+        setCredits(prev => prev + 1);
+        return false;
+      }
+      return true;
+    }
+    return false;
+  }, [credits, userId]);
 
-  const addCredits = useCallback((amount: number) => {
+  const addCredits = useCallback(async (amount: number, packId: string = 'unknown', price: number = 0, currency: string = 'EUR') => {
+    // Optimistic UI update
     setCredits(prev => prev + amount);
-  }, []);
+    
+    if (userId) {
+      // Get current credits
+      const { data: currentData } = await supabase
+        .from('user_credits')
+        .select('credits')
+        .eq('user_id', userId)
+        .single();
+        
+      const newTotal = (currentData?.credits || 0) + amount;
+      
+      // Update credits
+      await supabase
+        .from('user_credits')
+        .update({ credits: newTotal, updated_at: new Date().toISOString() })
+        .eq('user_id', userId);
+        
+      // Record purchase history
+      await supabase
+        .from('purchase_history')
+        .insert({
+          user_id: userId,
+          pack_id: packId,
+          amount: price,
+          currency: currency,
+          credits_added: amount
+        });
+    }
+  }, [userId]);
 
   return (
     <CreditsContext.Provider value={{ credits, useCredit, addCredits, isLoaded }}>

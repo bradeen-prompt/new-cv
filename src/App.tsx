@@ -5,6 +5,7 @@ import ProMode from './components/ProMode';
 import Dashboard from './components/Dashboard';
 import CheckoutReturn from './components/CheckoutReturn';
 import { CreditsProvider } from './contexts/CreditsContext';
+import { supabase } from './lib/supabase';
 
 function App() {
   const [currentPage, setCurrentPage] = useState<'landing' | 'pro-mode' | 'dashboard' | 'checkout-return'>('landing');
@@ -15,6 +16,20 @@ function App() {
     if (params.get('checkout') === 'return') {
       setCurrentPage('checkout-return');
     }
+  }, []);
+
+  // Initialize Supabase Anonymous Auth
+  useEffect(() => {
+    const initAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        const { error } = await supabase.auth.signInAnonymously();
+        if (error) {
+          console.error('Erreur lors de la connexion anonyme :', error);
+        }
+      }
+    };
+    initAuth();
   }, []);
 
   return (

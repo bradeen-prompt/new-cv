@@ -25,7 +25,7 @@ const CheckoutReturn: React.FC<CheckoutReturnProps> = ({ onContinue }) => {
     // Simulate verification delay
     const timer = setTimeout(() => {
       if (credits > 0 && paymentStatus !== 'failed') {
-        addCredits(credits);
+        addCredits(credits, packId, pack?.priceXOF || 0, 'XOF');
         setStatus('success');
       } else {
         setStatus('failed');
